@@ -78,7 +78,7 @@ class FundsExplorerScraper:
         
         funds_list: List[Type[RealStateFund]] = []
         for index, element in enumerate(found_elements):
-            if index > 1: break
+            # if index > 1: break
             splitted_element: List[str] = element.split("\n")
             funds_list.append(RealStateFund(splitted_element[0], splitted_element[1], splitted_element[3]))
         

@@ -23,10 +23,13 @@ if __name__ == "__main__":
 
     funds_data: List[Type[RealStateFund]] = scraper.get_funds_list("/funds", "//div[@id='fiis-list-container']", "//div[@class='item']")
 
-    for fund in funds_data:
+    print(f'Found { len(funds_data) } funds')
+
+    for index, fund in enumerate(funds_data):
         log.info("---------------------------------------------")
-        log.info(f'Scraping information about fund { fund.ticker }')
-        print(f'Getting fund { fund.ticker }')
+        log.info(f'Scraping information about fund { fund.ticker } [{ index+1 }]')
+        print(f'Getting fund { fund.ticker } [{ index+1 }]')
+
         scraper.get_funds_prices(fund, FUNDSEXPLORER_CHART_URL)
         scraper.get_main_indicators(fund, "//section[@id='main-indicators']//span[not(contains(@class, 'indicator-value-unit'))]")
         scraper.get_basic_info(fund, "//section[@id='basic-infos']//span[contains(@class, 'title') or contains(@class, 'description')]")
