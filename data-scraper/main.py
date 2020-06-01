@@ -38,7 +38,7 @@ if __name__ == "__main__":
         scraper.get_dividend_yield(fund, path="//div[@id='yields-chart-wrapper']//script", container="//div[@id='yields-chart-wrapper']")
         scraper.get_equity_value(fund, path="//div[@id='patrimonial-value-chart-wrapper']//script", container="//div[@id='patrimonial-value-chart-wrapper']")
         scraper.get_vacancy(fund, path="//div[@id='vacancy-chart-wrapper']//script", container="//div[@id='vacancy-chart-wrapper']")
-        scraper.get_assets(fund, path_data="//div[@id='fund-actives-chart']//script", path_assets="//div[@id='fund-actives-items-wrapper']//div[@class='item']", container="//div[@id='vacancy-chart-wrapper']")
+        scraper.get_assets(fund, path_data="//div[@id='fund-actives-chart']//script", path_assets="//div[@id='fund-actives-items-wrapper']//div[@class='item']", container="//div[@id='fund-actives-items-wrapper']")
 
     scraper.close()
 
