@@ -2,6 +2,7 @@ import os
 import json
 import pandas as pd
 import datetime as dt
+import math
 
 months_dict = {
     "janeiro": 1, "fevereiro": 2, "março": 3, "abril": 4, "maio": 5, "junho": 6, "julho": 7, "agosto": 8, "setembro": 9,
@@ -24,7 +25,59 @@ if __name__ == "__main__":
 
         for line in range(0,funds_df_raw.shape[0]):
             if key in new_columns:
-                proc_data[key].append(funds_df_raw[key][line])
+                subset = funds_df_raw[key][line]
+                if key in ["Ativos Atuais", "Cotações Históricas", "Dividendos Históricos",  "Dividend Yield Histórico", "Valor Patrimonial Histórico", "Vacância Histórica"]:
+                    if subset in ["[]","[[], []]","{}"]:
+                        subset = None
+
+                    elif key in ["Dividendos Históricos", "Dividend Yield Histórico", "Valor Patrimonial Histórico"]:
+                        parsed_obj = json.loads(subset.replace("\'", '\"'))
+                        
+                        dates = parsed_obj[0]
+                        for index, date in enumerate(dates):
+                            splitted = date.split("/")
+                            parsed_date = dt.datetime(int(splitted[1]), months_dict[splitted[0].lower()], 1)
+                            parsed_obj[0][index] = parsed_date
+
+                        subset = parsed_obj
+                    
+                    elif key == "Cotações Históricas":
+                        parsed_obj = json.loads(subset.replace("\'", '\"'))
+
+                        data = [[], []]
+                        for line in parsed_obj:
+                            data[0].append(dt.datetime.strptime(line['data'], "%Y-%m-%d %H:%M:%S"))
+                            data[1].append(float(line['fec']))
+
+                        subset = data
+
+                    elif key == "Vacância Histórica":
+                        parsed_obj = json.loads(subset.replace("\'", '\"'))
+                        dates = parsed_obj['date']
+
+                        for index, date in enumerate(dates):
+                            splitted = date.split("/")
+                            parsed_date = dt.datetime(int(splitted[1]), months_dict[splitted[0].lower()], 1)
+                            parsed_obj['date'][index] = parsed_date
+
+                        subset = parsed_obj
+
+                    else:
+                        if "D'Ávila" in subset:
+                            subset = subset.replace("D'Ávila", "D Ávila")
+                        elif "D'ouro" in subset:
+                            subset = subset.replace("D'ouro", "D ouro")
+                        elif "d'Oeste" in subset:
+                            subset = subset.replace("d'Oeste", "D Oeste")
+                        elif "SAM'S" in subset:
+                            subset = subset.replace("SAM'S",  "SAMS")
+                        elif '"F"' in subset:
+                            subset = subset.replace('"F"', "F")
+                        subset = json.loads(subset.replace("\'", "\""))
+
+                elif ("N/A" in str(subset) or "nan" in str(subset)) and not key == "Descrição":
+                    subset = None
+                proc_data[key].append(subset)
 
             else:
                 subset = json.loads(funds_df_raw[key][line].replace("\'", "\""))
@@ -74,15 +127,33 @@ if __name__ == "__main__":
                     else:
                         total_quotas = float(total_quotas.replace(".", ""))
 
-                    proc_data["Data de Constituição do Fundo"] = fund_date
-                    proc_data["Cotas Emitidas"] = total_quotas
-                    proc_data["Tipo de Gestão"] = mgmt_type
-                    proc_data["Público Alvo"] = target
-                    proc_data["Mandato"] = mandate
-                    proc_data["Segmento"] = segment
-                    proc_data["Prazo de Duração"] = term
-                    proc_data["Taxa de Administração"] = admin_tax
-                    proc_data["Taxa de Performance"] = perf_tax
+                    if "N/A" in mgmt_type:
+                        mgmt_type = None
+                    
+                    if "N/A" in admin_tax:
+                        admin_tax = None
+                    
+                    if "N/A" in perf_tax:
+                        perf_tax = None
+
+                    if "N/A" in target:
+                        target = None
+
+                    if "N/A" in segment:
+                        segment = None
+
+                    if "N/A" in mandate:
+                        mandate = None
+
+                    proc_data["Data de Constituição do Fundo"].append(fund_date)
+                    proc_data["Cotas Emitidas"].append(total_quotas)
+                    proc_data["Tipo de Gestão"].append(mgmt_type)
+                    proc_data["Público Alvo"].append(target)
+                    proc_data["Mandato"].append(mandate)
+                    proc_data["Segmento"].append(segment)
+                    proc_data["Prazo de Duração"].append(term)
+                    proc_data["Taxa de Administração"].append(admin_tax)
+                    proc_data["Taxa de Performance"].append(perf_tax)
     
     funds_df = pd.DataFrame(proc_data, columns=new_columns)
 
