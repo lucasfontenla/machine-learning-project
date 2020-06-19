@@ -5,6 +5,7 @@ import string
 import datetime as dt
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.preprocessing import OneHotEncoder as SKLOneHotEncoder
+from sklearn.preprocessing import StandardScaler as SKLStdScaler
 from sklearn.feature_extraction.text import CountVectorizer as SKLCountVectorizer
 
 class CategoryManager:
@@ -28,7 +29,11 @@ class DropRows(BaseEstimator, TransformerMixin):
         return self
     
     def transform(self, X):
-        return X.dropna(subset=self.rows).reset_index(drop=True)
+        rows = self.rows
+        if str(self.rows) == 'all':
+            rows = X.columns
+
+        return X.dropna(subset=rows).reset_index(drop=True)
 
 # drop ticker row
 class DropTickerAndName(BaseEstimator, TransformerMixin):
@@ -55,19 +60,51 @@ class DropColumns(BaseEstimator, TransformerMixin):
     def transform(self, X):
         return X.drop(columns=self.cols)
 
+# convert columns to float
 class Convert2Float(BaseEstimator, TransformerMixin):
+    def __init__(self, skip=[]):
+        self.skip_col = skip
+
     def fit(self, x, y=None):
+        print("\nRunning Convert2Float")
         return self
 
     def transform(self, X, y=None):
         columns = X.columns
         for column in columns:
-            try:
-                X[column] = X[column].astype(float)
-            except ValueError:
-                print(f"Unable to convert column '{ column }' to float")
-            except TypeError:
-                print(f"Unable to convert column '{ column }' to float")
+            if not column in self.skip_col:
+                try:
+                    X[column] = X[column].astype(float)
+                except ValueError:
+                    print(f"Unable to convert column '{ column }' to float")
+                except TypeError:
+                    print(f"Unable to convert column '{ column }' to float")
+            else:
+                print(f"Skipping '{ column }'")
+
+        return X
+
+# convert columns to float
+class StdScaler(BaseEstimator, TransformerMixin):
+    def __init__(self, exclude_col = []):
+        self.exclude_col = exclude_col
+
+    def fit(self, x, y=None):
+        print("\nRunning Std. Scaler")
+        return self
+
+    def transform(self, X, y=None):
+        columns = X.columns
+        for column in columns:
+            if column in self.exclude_col:
+                print(f'Skipping { column }')
+            else:
+                try:
+                    X[column] = SKLStdScaler().fit_transform(np.array(X[column]).reshape(-1,1))
+                except ValueError:
+                    print(f"Unable to std. scale '{ column }'")
+                except TypeError:
+                    print(f"Unable to std. scale '{ column }'")
 
         return X
 
@@ -135,7 +172,30 @@ class OneHotEncoder(BaseEstimator, TransformerMixin):
 
         return X
 
-# one hot encoding
+class OneHotEncoder2(BaseEstimator, TransformerMixin):
+    def __init__(self, col, category_manager):
+        self.target_cols_names = col
+        self.category_manager = category_manager
+
+    def fit(self, x, y=None):
+        return self
+
+    def transform(self, X, y=None):
+        encoder = SKLOneHotEncoder(categories='auto')
+
+        selected_cols = X[self.target_cols_names]
+        remaining_cols = X.drop(columns=self.target_cols_names)
+
+        selected_cols_encoded = encoder.fit_transform(selected_cols).toarray()
+        labels = np.concatenate(encoder.categories_).ravel()
+
+        new_df = pd.DataFrame(selected_cols_encoded, columns=labels)
+
+        all_columns = list(remaining_cols.columns) + list(labels)
+
+        return pd.DataFrame(np.c_[np.array(remaining_cols), np.array(new_df)], columns=all_columns)
+
+# count vect.
 class CountVectorizer(BaseEstimator, TransformerMixin):
     def __init__(self, col):
         self.target_cols_names = col
@@ -148,6 +208,29 @@ class CountVectorizer(BaseEstimator, TransformerMixin):
             X[col] = SKLCountVectorizer().fit_transform(X[[col]])
 
         return X
+
+# count vect. 2
+class CountVectorizer2(BaseEstimator, TransformerMixin):
+    def __init__(self, col):
+        self.target_cols_names = col
+
+    def fit(self, x, y=None):
+        return self
+
+    def transform(self, X, y=None):
+        columns_names = [[col for col in list(X.columns) if col not in self.target_cols_names]]
+        columns = np.array(X.drop(columns=self.target_cols_names))
+
+        for col in self.target_cols_names:
+            vect = SKLCountVectorizer()
+            vect_array = vect.fit_transform(X[col]).toarray()
+
+            columns = np.c_[columns, vect_array]
+            columns_names.append(list(vect.vocabulary_.keys()))
+
+        columns_names = np.concatenate(columns_names).ravel()
+
+        return pd.DataFrame(columns, columns=columns_names)
 
 # input foundation date based on first price
 class InputDate(BaseEstimator, TransformerMixin):
@@ -192,6 +275,10 @@ class FillColumn(BaseEstimator, TransformerMixin):
             col_name = X.columns[self.col_index]
             X[col_name].fillna(self.const, inplace=True)
 
+        elif self.method == 'median':
+            col_name = X.columns[self.col_index]
+            X[col_name].fillna(X[col_name].median(), inplace=True)
+
         return X
 
 # creates columns based on dividends
@@ -214,30 +301,38 @@ class ProcessDividends(BaseEstimator, TransformerMixin):
                 dates, dividends = zip(*sorted(zip(series[0], series[1]), reverse=True))
                 mean_dividends = np.mean(dividends)
 
+                if mean_dividends <= 0:
+                    mean_dividends = None
+
+                all_dividends = []
                 for index, date in enumerate(dates):              
                     month_n = ((dates[0]-date).days)//30
 
                     if month_n > 11: 
                         break
-                        
                     else:
                         new_columns[month_n][row] = dividends[index]
-                        
+                        all_dividends.append(dividends[index])
+                
                                               
                 new_columns[12][row] = sum([
                     float(new_columns[0][row] or 0), float(new_columns[1][row] or 0), float(new_columns[2][row] or 0)
                 ])
                         
                 indicators = sp.stats.describe(np.array(dividends))
-                new_columns[13][row] = indicators.mean
+                new_columns[13][row] = mean_dividends
                 new_columns[14][row] = indicators.minmax[0]
                 new_columns[15][row] = indicators.minmax[1]
-                if mean_dividends == 0:
-                    new_columns[16][row] = 0
+                if mean_dividends == None or np.mean(all_dividends) <= 0:
+                    new_columns[16][row] = None
                 else:
                     new_columns[16][row] = np.sqrt(indicators.variance)/mean_dividends
                 new_columns[17][row] = indicators.skewness
                 new_columns[18][row] = indicators.kurtosis
+
+            else:
+                for i in range(19):
+                    new_columns[i][row] = None
               
         return_list = X
         for new_column in new_columns:
@@ -275,10 +370,13 @@ class ProcessPrices(BaseEstimator, TransformerMixin):
                                                              #        min + max + var + skew + kurt + max_var_pct
         
         for row, series in enumerate(all_rows):
-            if not series == None:
+            if not str(series) == "None":
                 # ordenando por data
                 dates, prices = zip(*sorted(zip(series[0], series[1]), reverse=True))
                 mean_price = np.mean(prices)
+
+                if mean_price <= 0:
+                    mean_price = None
 
                 for month_n in range(12):
                     indexes = [dates.index(date) for date in dates if self._filter_date(date, dates[0], month_n)]  
@@ -288,23 +386,31 @@ class ProcessPrices(BaseEstimator, TransformerMixin):
                     else:
                         month_prices = prices[min(indexes): max(indexes)+1]
                     
-                    new_columns[month_n][row] = np.mean(month_prices)
+                    mean_price_period = np.mean(month_prices)
+                    if mean_price_period <= 0:
+                        new_columns[month_n][row] = None
+                    else:
+                        new_columns[month_n][row] = mean_price_period
                     
                 indicators = sp.stats.describe(prices)
                 new_columns[12][row] = indicators.mean
                 new_columns[13][row] = indicators.minmax[0]
                 new_columns[14][row] = indicators.minmax[1]
-                if mean_price == 0:
-                    new_columns[15][row] = 0
+                if mean_price == None:
+                    new_columns[15][row] = None
                 else:
                     new_columns[15][row] = np.sqrt(indicators.variance)/mean_price
                 new_columns[16][row] = indicators.skewness
                 new_columns[17][row] = indicators.kurtosis
                 if prices[-1] == 0:
-                    new_columns[18][row] = 1
+                    new_columns[18][row] = None
                 else:
                     new_columns[18][row] = (prices[0]/prices[-1])
               
+            else:
+                for i in range(19):
+                    new_columns[i][row] = None
+
         return_list = X
         for new_column in new_columns:
             return_list = np.c_[return_list, new_column]

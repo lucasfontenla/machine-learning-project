@@ -87,8 +87,10 @@ if __name__ == "__main__":
                         liquidity = None
                     elif "." in liquidity:
                         liquidity = float(liquidity.replace(".", ""))
+                        if liquidity <= 0: liquidity = None
                     else:
                         liquidity = float(liquidity)
+                        if liquidity <= 0: liquidity = None
 
                     net_worth = subset["Patrimônio Líquido"]
                     if "," in net_worth:
