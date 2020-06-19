@@ -173,9 +173,8 @@ class OneHotEncoder(BaseEstimator, TransformerMixin):
         return X
 
 class OneHotEncoder2(BaseEstimator, TransformerMixin):
-    def __init__(self, col, category_manager):
+    def __init__(self, col):
         self.target_cols_names = col
-        self.category_manager = category_manager
 
     def fit(self, x, y=None):
         return self
